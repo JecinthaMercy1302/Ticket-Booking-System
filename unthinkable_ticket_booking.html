@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ticket Booking</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    background: #f3faf5;
+    margin: 0;
+    padding: 0;
+    color: #333;
+  }
+  header {
+    background: #d6e8f5;
+    padding: 14px 20px;
+    border-bottom: 3px solid #d6f5e3;
+  }
+  header h1 {
+    margin: 0;
+    font-size: 22px;
+  }
+  nav {
+    margin-top: 8px;
+  }
+  nav button {
+    background: #ffd6e8;
+    border: 1px solid #cca;
+    padding: 6px 14px;
+    margin-right: 8px;
+    cursor: pointer;
+    border-radius: 4px;
+  }
+  nav button.active {
+    background: #d6f5e3;
+  }
+  .container {
+    padding: 16px 20px;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .event-card {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-left: 6px solid #d6e8f5;
+    padding: 10px 14px;
+    margin-bottom: 10px;
+  }
+  .event-card button {
+    background: #d6f5e3;
+    border: 1px solid #9c9;
+    padding: 5px 10px;
+    cursor: pointer;
+  }
+  select, input {
+    padding: 5px;
+    margin: 4px 0;
+  }
+  .seat-grid {
+    display: grid;
+    grid-template-columns: repeat(8, 32px);
+    gap: 5px;
+    margin: 14px 0;
+  }
+  .seat {
+    width: 32px;
+    height: 32px;
+    font-size: 10px;
+    text-align: center;
+    line-height: 32px;
+    border: 1px solid #999;
+    cursor: pointer;
+  }
+  .seat.available.Premium { background: #ffd6e8; }
+  .seat.available.Standard { background: #d6f5e3; }
+  .seat.selected { background: #d6e8f5; border: 2px solid #333; }
+  .seat.held { background: #f0e68c; cursor: not-allowed; }
+  .seat.booked { background: #ccc; cursor: not-allowed; }
+  .legend span {
+    display: inline-block;
+    margin-right: 12px;
+    font-size: 12px;
+  }
+  .box {
+    width: 12px; height: 12px; display: inline-block; margin-right: 4px; border: 1px solid #999; vertical-align: middle;
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 12px;
+    margin-top: 12px;
+  }
+  .timer {
+    color: #b33;
+    font-weight: bold;
+  }
+  .ticket {
+    background: #fdf7fb;
+    border: 2px dashed #d6a0c0;
+    padding: 12px;
+    margin-top: 10px;
+  }
+  .note {
+    font-size: 12px;
+    color: #777;
+    margin-top: 6px;
+  }
+  hr {
+    border: none;
+    border-top: 1px solid #ddd;
+    margin: 16px 0;
+  }
+  .booking-row {
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+  }
+  .booking-row button {
+    background: #ffd6e8;
+    border: 1px solid #ccc;
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Ticket Booking</h1>
+  <nav>
+    <button id="navBrowse" class="active" onclick="showPage('browse')">Browse Events</button>
+    <button id="navBookings" onclick="showPage('bookings')">My Bookings</button>
+  </nav>
+</header>
+
+<div class="container">
+
+  <!-- BROWSE PAGE -->
+  <div id="page-browse">
+    <label>Filter by type:
+      <select id="typeFilter" onchange="renderEvents()">
+        <option value="all">All</option>
+        <option value="Movie">Movie</option>
+        <option value="Concert">Concert</option>
+      </select>
+    </label>
+    <div id="eventList"></div>
+  </div>
+
+  <!-- SEAT MAP PAGE -->
+  <div id="page-seatmap" style="display:none">
+    <button onclick="showPage('browse')">&larr; back to events</button>
+    <h2 id="seatEventTitle"></h2>
+    <div class="legend">
+      <span><span class="box" style="background:#ffd6e8"></span>Premium available</span>
+      <span><span class="box" style="background:#d6f5e3"></span>Standard available</span>
+      <span><span class="box" style="background:#f0e68c"></span>Held</span>
+      <span><span class="box" style="background:#ccc"></span>Booked</span>
+      <span><span class="box" style="background:#d6e8f5"></span>Your selection</span>
+    </div>
+
+    <div>
+      Choose your required amount of time for confirmation:
+      <input type="number" id="ttlInput" value="2" min="1" style="width:50px">
+    </div>
+
+    <div id="seatGrid" class="seat-grid"></div>
+
+    <div id="selectionSummary"></div>
+
+    <button onclick="holdSelectedSeats()">Hold Selected Seats</button>
+
+    <div id="waitlistBox" style="display:none" class="panel">
+      <b>This category is sold out.</b>
+      <div>Join the waitlist:</div>
+      <input id="wlName" placeholder="Name"><br>
+      <input id="wlEmail" placeholder="Email"><br>
+      <button onclick="joinWaitlist()">Join Waitlist</button>
+      <div id="wlStatus" class="note"></div>
+    </div>
+
+    <div id="checkoutBox" style="display:none" class="panel">
+      <div id="holdTimerText" class="timer"></div>
+      <div>Name: <input id="custName"></div>
+      <div>Email: <input id="custEmail"></div>
+      <button onclick="confirmBooking()">Confirm Booking</button>
+    </div>
+
+    <div id="ticketBox"></div>
+  </div>
+
+  <!-- BOOKINGS PAGE -->
+  <div id="page-bookings" style="display:none">
+    <h2>My Bookings</h2>
+    <div id="bookingsList"></div>
+  </div>
+
+</div>
+
+<script>
+
+// Mock data.
+const events = [
+  { id: 1, name: "Galaxy Quest 2", type: "Movie", venue: "Cinehall 3", date: "2026-08-25", time: "19:30",
+    pricing: { Premium: 350, Standard: 200 } },
+  { id: 2, name: "Indie Nights Live", type: "Concert", venue: "Open Grounds", date: "2026-08-27", time: "18:00",
+    pricing: { Premium: 900, Standard: 500 } },
+  { id: 3, name: "The Last Signal", type: "Movie", venue: "Cinehall 1", date: "2026-08-28", time: "21:00",
+    pricing: { Premium: 350, Standard: 200 } },
+];
+
+function buildSeats() {
+  const seats = [];
+  const rows = ["A","B","C","D","E","F"];
+  rows.forEach((r, ri) => {
+    const category = ri < 2 ? "Premium" : "Standard";
+    for (let c = 1; c <= 8; c++) {
+      seats.push({ id: r + c, row: r, col: c, category, status: "available", holdExpiry: null });
+    }
+  });
+  return seats;
+}
+events.forEach(e => e.seats = buildSeats());
+
+let currentEvent = null;
+let selectedSeats = [];
+let currentBookingHoldTimer = null;
+let bookings = [];
+
+function showPage(p) {
+  document.getElementById('page-browse').style.display = p === 'browse' ? 'block' : 'none';
+  document.getElementById('page-seatmap').style.display = p === 'seatmap' ? 'block' : 'none';
+  document.getElementById('page-bookings').style.display = p === 'bookings' ? 'block' : 'none';
+  document.getElementById('navBrowse').className = p === 'browse' ? 'active' : '';
+  document.getElementById('navBookings').className = p === 'bookings' ? 'active' : '';
+  if (p === 'bookings') renderBookings();
+}
+
+function renderEvents() {
+  const filter = document.getElementById('typeFilter').value;
+  const list = document.getElementById('eventList');
+  list.innerHTML = '';
+  events.filter(e => filter === 'all' || e.type === filter).forEach(e => {
+    const div = document.createElement('div');
+    div.className = 'event-card';
+    div.innerHTML = `
+      <b>${e.name}</b> (${e.type})<br>
+      ${e.venue} - ${e.date} ${e.time}<br>
+      Premium: Rs.${e.pricing.Premium} | Standard: Rs.${e.pricing.Standard}<br>
+      <button onclick="openSeatMap(${e.id})">View Seats</button>
+    `;
+    list.appendChild(div);
+  });
+}
+renderEvents();
+
+function openSeatMap(id) {
+  currentEvent = events.find(e => e.id === id);
+  selectedSeats = [];
+  document.getElementById('seatEventTitle').innerText = currentEvent.name + " - " + currentEvent.date + " " + currentEvent.time;
+  document.getElementById('checkoutBox').style.display = 'none';
+  document.getElementById('ticketBox').innerHTML = '';
+  renderSeatGrid();
+  showPage('seatmap');
+}
+
+function renderSeatGrid() {
+  const grid = document.getElementById('seatGrid');
+  grid.innerHTML = '';
+  currentEvent.seats.forEach(seat => {
+    const div = document.createElement('div');
+    div.className = 'seat ' + seat.status + ' ' + seat.category;
+    if (selectedSeats.includes(seat.id)) div.className = 'seat selected';
+    div.innerText = seat.id;
+    div.onclick = () => toggleSeat(seat);
+    grid.appendChild(div);
+  });
+  renderSelectionSummary();
+  checkSoldOut();
+}
+
+function toggleSeat(seat) {
+  if (seat.status !== 'available') return;
+  const idx = selectedSeats.indexOf(seat.id);
+  if (idx >= 0) selectedSeats.splice(idx, 1);
+  else selectedSeats.push(seat.id);
+  renderSeatGrid();
+}
+
+function renderSelectionSummary() {
+  const box = document.getElementById('selectionSummary');
+  if (selectedSeats.length === 0) { box.innerHTML = 'No seats selected.'; return; }
+  let total = 0;
+  const lines = selectedSeats.map(id => {
+    const s = currentEvent.seats.find(s => s.id === id);
+    total += currentEvent.pricing[s.category];
+    return s.id + ' (' + s.category + ')';
+  });
+  box.innerHTML = 'Selected: ' + lines.join(', ') + '<br>Subtotal: Rs.' + total;
+}
+
+function checkSoldOut() {
+  const wlBox = document.getElementById('waitlistBox');
+  const anyAvailable = currentEvent.seats.some(s => s.status === 'available');
+  wlBox.style.display = anyAvailable ? 'none' : 'block';
+}
+
+function holdSelectedSeats() {
+  if (selectedSeats.length === 0) { alert('Select at least one seat.'); return; }
+  const ttlMinutes = parseFloat(document.getElementById('ttlInput').value) || 2;
+  const expiry = Date.now() + ttlMinutes * 60 * 1000;
+  selectedSeats.forEach(id => {
+    const seat = currentEvent.seats.find(s => s.id === id);
+    seat.status = 'held';
+    seat.holdExpiry = expiry;
+  });
+  renderSeatGrid();
+  document.getElementById('checkoutBox').style.display = 'block';
+  startHoldCountdown(expiry);
+}
+
+function startHoldCountdown(expiry) {
+  if (currentBookingHoldTimer) clearInterval(currentBookingHoldTimer);
+  currentBookingHoldTimer = setInterval(() => {
+    const remaining = Math.max(0, expiry - Date.now());
+    const mins = Math.floor(remaining / 60000);
+    const secs = Math.floor((remaining % 60000) / 1000);
+    document.getElementById('holdTimerText').innerText =
+      'Hold expires in ' + mins + 'm ' + secs + 's';
+    if (remaining <= 0) {
+      clearInterval(currentBookingHoldTimer);
+      releaseHeldSeats();
+    }
+  }, 500);
+}
+
+function releaseHeldSeats() {
+  selectedSeats.forEach(id => {
+    const seat = currentEvent.seats.find(s => s.id === id);
+    if (seat.status === 'held') {
+      seat.status = 'available';
+      seat.holdExpiry = null;
+    }
+  });
+  selectedSeats = [];
+  document.getElementById('checkoutBox').style.display = 'none';
+  renderSeatGrid();
+  alert('Your hold expired and the seats were released.');
+}
+
+function confirmBooking() {
+  const name = document.getElementById('custName').value.trim();
+  const email = document.getElementById('custEmail').value.trim();
+  if (!name || !email) { alert('Enter name and email.'); return; }
+  if (currentBookingHoldTimer) clearInterval(currentBookingHoldTimer);
+
+  selectedSeats.forEach(id => {
+    const seat = currentEvent.seats.find(s => s.id === id);
+    seat.status = 'booked';
+  });
+
+  const ref = 'BK' + Math.random().toString(36).substring(2, 9).toUpperCase();
+  const booking = {
+    ref, name, email,
+    eventName: currentEvent.name,
+    eventId: currentEvent.id,
+    seats: [...selectedSeats],
+    date: currentEvent.date,
+    time: currentEvent.time
+  };
+  bookings.push(booking);
+
+  document.getElementById('checkoutBox').style.display = 'none';
+  const ticketBox = document.getElementById('ticketBox');
+  ticketBox.innerHTML = `
+    <div class="ticket">
+      <b>Booking Confirmed</b><br>
+      Reference: ${ref}<br>
+      Event: ${currentEvent.name}<br>
+      Seats: ${booking.seats.join(', ')}<br>
+      <div id="qrcode"></div>
+      <div class="note">In a full build this ticket + QR would be emailed to ${email}.</div>
+    </div>
+  `;
+  new QRCode(document.getElementById('qrcode'), { text: ref, width: 100, height: 100 });
+
+  selectedSeats = [];
+  renderSeatGrid();
+}
+
+let waitlist = [];
+function joinWaitlist() {
+  const name = document.getElementById('wlName').value.trim();
+  const email = document.getElementById('wlEmail').value.trim();
+  if (!name || !email) { alert('Enter name and email.'); return; }
+  waitlist.push({ name, email, eventId: currentEvent.id });
+  const pos = waitlist.filter(w => w.eventId === currentEvent.id).length;
+  document.getElementById('wlStatus').innerText = 'Added to waitlist. Position: ' + pos;
+}
+
+function renderBookings() {
+  const list = document.getElementById('bookingsList');
+  list.innerHTML = '';
+  if (bookings.length === 0) { list.innerHTML = 'No bookings yet.'; return; }
+  bookings.forEach((b, i) => {
+    const div = document.createElement('div');
+    div.className = 'booking-row';
+    div.innerHTML = `
+      <b>${b.eventName}</b> — ${b.date} ${b.time}<br>
+      Ref: ${b.ref} | Seats: ${b.seats.join(', ')}<br>
+      <button onclick="cancelBooking(${i})">Cancel Booking</button>
+    `;
+    list.appendChild(div);
+  });
+}
+
+function cancelBooking(i) {
+  const b = bookings[i];
+  const ev = events.find(e => e.id === b.eventId);
+  b.seats.forEach(id => {
+    const seat = ev.seats.find(s => s.id === id);
+    if (seat) seat.status = 'available';
+  });
+  bookings.splice(i, 1);
+  renderBookings();
+  alert('Booking cancelled and seats released.');
+}
+</script>
+
+</body>
+</html>
